@@ -1,0 +1,190 @@
+:root {
+  --blue: #1a73e8;
+  --blue-dark: #1557b0;
+  --grey: #dadce0;
+  --grey-dark: #80868b;
+  --line: #e0e0e0;
+  --text: #202124;
+  --muted: #5f6368;
+  --red: #d93025;
+  --hour: 48px; /* keep in sync with HOUR_PX in app.js */
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex;
+  flex-direction: column;
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+  background: #fff;
+}
+
+button, .button {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover, .button:hover { background: #f1f3f4; }
+button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.primary:hover { background: var(--blue-dark); }
+button.danger { color: var(--red); }
+
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.topbar h1 { margin: 0; font-size: 20px; font-weight: 500; }
+.nav { display: flex; align-items: center; gap: 6px; }
+#week-label { margin-left: 10px; font-size: 17px; }
+.actions { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.legend { display: flex; align-items: center; gap: 6px; margin-right: 8px; color: var(--muted); }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.swatch.fixed { background: var(--grey); border-left: 3px solid var(--grey-dark); }
+.swatch.flexible { background: var(--blue); margin-left: 8px; }
+
+.edit-only, .local-note { display: none; }
+body.editing .edit-only { display: contents; }
+body.editing .view-only { display: none; }
+body.editing .local-note {
+  display: block;
+  margin: 0;
+  padding: 4px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: #f8f9fa;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Calendar grid */
+#calendar { flex: 1; overflow: auto; user-select: none; }
+.cal-head, .cal-body {
+  display: grid;
+  grid-template-columns: 64px repeat(7, minmax(90px, 1fr));
+  min-width: 720px;
+}
+.cal-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.corner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 4px 8px 4px 0;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+}
+.day-head { padding: 8px 0 4px; text-align: center; border-left: 1px solid var(--line); }
+.dow { display: block; font-size: 11px; text-transform: uppercase; color: var(--muted); }
+.dom { display: inline-block; width: 38px; height: 38px; line-height: 38px; border-radius: 50%; font-size: 20px; }
+.day-head.today .dow { color: var(--blue); font-weight: 600; }
+.day-head.today .dom { background: var(--blue); color: #fff; }
+.allday { min-height: 26px; padding: 2px; border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
+.allday .event { position: static; margin-bottom: 2px; }
+.allday-label { border-top: 1px solid var(--line); align-items: center; }
+
+.cal-body { padding: 10px 0 14px; }
+.times { position: relative; }
+.times span {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--muted);
+}
+.day-col {
+  position: relative;
+  border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background-image: linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 100% var(--hour);
+}
+body.editing .day-col { cursor: cell; }
+
+/* Events */
+.event {
+  position: absolute;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 1px solid #fff;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  z-index: 1;
+}
+.event div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event .title { font-weight: 600; }
+.event.fixed { background: var(--grey); color: var(--text); border-left: 4px solid var(--grey-dark); }
+.event.flexible { background: var(--blue); color: #fff; }
+body.editing .event.flexible { cursor: grab; }
+.event.dragging { z-index: 4; opacity: .85; cursor: grabbing; box-shadow: 0 3px 8px rgba(0, 0, 0, .3); }
+
+.now-line { position: absolute; left: 0; right: 0; height: 2px; background: #ea4335; z-index: 3; pointer-events: none; }
+.now-line::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ea4335;
+}
+
+/* Dialogs */
+dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 20px;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28);
+}
+dialog::backdrop { background: rgba(0, 0, 0, .3); }
+dialog h2 { margin: 0 0 12px; font-size: 18px; font-weight: 500; }
+dialog label { display: block; margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+dialog input:not([type="checkbox"]) {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+dialog input:disabled { background: #f8f9fa; color: var(--text); }
+.row { display: flex; gap: 8px; }
+.row label { flex: 1; }
+label.check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text); }
+.note { margin: 0 0 12px; padding: 8px 10px; border-radius: 4px; background: #f1f3f4; color: var(--muted); }
+.error { min-height: 1.2em; margin: 0; color: var(--red); }
+.buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.buttons .spacer { flex: 1; }
+#ask-text { margin: 0 0 8px; white-space: pre-line; }
+
+/* What the event dialog shows depends on the event and on being logged in */
+.until, .note-fixed, .login-hint, .all-day-text, #delete-btn, #save-btn { display: none; }
+#event-form.weekly .until { display: block; }
+#event-form.is-fixed .note-fixed { display: block; }
+#event-form:not(.editable):not(.is-fixed) .login-hint { display: block; }
+#event-form:not(.editable):not(.weekly) .check { display: none; }
+#event-form.all-day .times-row { display: none; }
+#event-form.all-day .all-day-text { display: block; margin: 0 0 10px; }
+#event-form.editable #save-btn { display: inline-block; }
+#event-form.editable:not(.is-new) #delete-btn { display: inline-block; }

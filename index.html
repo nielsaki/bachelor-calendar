@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bachelor – Niels &amp; Ró</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Bachelor – Niels &amp; Ró</h1>
+    <div class="nav">
+      <button id="today-btn">Today</button>
+      <button id="prev-btn" title="Previous week" aria-label="Previous week">‹</button>
+      <button id="next-btn" title="Next week" aria-label="Next week">›</button>
+      <span id="week-label"></span>
+    </div>
+    <div class="actions">
+      <span class="legend">
+        <i class="swatch fixed"></i> Fixed
+        <i class="swatch flexible"></i> Bachelor work
+      </span>
+      <span class="edit-only">
+        <button id="new-btn" class="primary">+ New session</button>
+        <label class="button" for="ics-input">Import .ics</label>
+        <input type="file" id="ics-input" accept=".ics,text/calendar" hidden>
+        <button id="export-btn" title="Download events.js with all events, to publish them for everyone">Export</button>
+        <button id="logout-btn">Log out</button>
+      </span>
+      <button id="login-btn" class="view-only">Log in</button>
+    </div>
+  </header>
+  <p class="local-note">Logged in. Changes are saved in this browser only. To show them to everyone, use Export (see README).</p>
+
+  <main id="calendar"></main>
+
+  <!-- View / create / edit an event -->
+  <dialog id="event-dialog">
+    <form id="event-form">
+      <h2 id="event-heading">Event</h2>
+      <p class="note note-fixed">Fixed event. It can't be moved or deleted in the calendar.</p>
+      <p class="note login-hint">Log in to edit this session.</p>
+      <label>Title <input name="title" required></label>
+      <label>Location (optional) <input name="location"></label>
+      <label>Date <input type="date" name="date" required></label>
+      <p class="all-day-text">All day</p>
+      <div class="row times-row">
+        <label>Start <input type="time" name="start" step="900" required></label>
+        <label>End <input type="time" name="end" step="900" required></label>
+      </div>
+      <label class="check"><input type="checkbox" name="weekly"> Repeat every week</label>
+      <label class="until">Repeat until (optional) <input type="date" name="until"></label>
+      <p class="error" id="event-error"></p>
+      <div class="buttons">
+        <button type="button" id="delete-btn" class="danger">Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="close-btn">Close</button>
+        <button type="submit" id="save-btn" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Login -->
+  <dialog id="login-dialog">
+    <form id="login-form">
+      <h2>Log in</h2>
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <p class="error" id="login-error"></p>
+      <div class="buttons">
+        <button type="button" id="login-cancel">Cancel</button>
+        <button type="submit" class="primary">Log in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Small multiple-choice question (e.g. "only this week" / "all weeks") -->
+  <dialog id="ask-dialog">
+    <form method="dialog">
+      <p id="ask-text"></p>
+      <div class="buttons" id="ask-buttons"></div>
+    </form>
+  </dialog>
+
+  <script src="events.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
