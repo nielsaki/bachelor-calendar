@@ -13,7 +13,6 @@
   const USERNAME = 'NielsRo';
   const PASSWORD = 'Britte'; // not secret: anyone can read it in this file
   const LOGIN_KEY = 'bachelor-calendar:logged-in';
-  const ZONE_KEY = 'bachelor-calendar:display-zone';
   const DAY_MS = 86400000;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -103,7 +102,6 @@
   let zone = DEFAULT_ZONE;
   try {
     loggedIn = localStorage.getItem(LOGIN_KEY) === '1';
-    if (ZONES[localStorage.getItem(ZONE_KEY)]) zone = localStorage.getItem(ZONE_KEY);
   } catch (e) { /* defaults */ }
   let weekStart = mondayOf(wallClock(Date.now(), zone).date);
   let drag = null;           // the event being dragged, if any
@@ -301,7 +299,6 @@
   zoneSelect.value = zone;
   zoneSelect.addEventListener('change', () => {
     zone = zoneSelect.value;
-    try { localStorage.setItem(ZONE_KEY, zone); } catch (e) { /* only for this visit */ }
     render();
   });
 
