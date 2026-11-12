@@ -4,8 +4,8 @@
 
   // ---- Settings -------------------------------------------------------------
   const TZ = 'Atlantic/Faroe';  // time zone of the times saved in events.js
-  const ZONES = { 'Europe/Copenhagen': 'Danish time', 'Atlantic/Faroe': 'Faroese time' };
-  const DEFAULT_ZONE = 'Europe/Copenhagen'; // time zone the calendar is shown in by default
+  const ZONES = { 'Atlantic/Faroe': 'Faroese time', 'Europe/Copenhagen': 'Danish time' };
+  const DEFAULT_ZONE = 'Atlantic/Faroe';    // time zone the calendar is shown in by default
   const START_HOUR = 6;
   const END_HOUR = 23;
   const HOUR_PX = 48;        // keep in sync with --hour in style.css
@@ -14,7 +14,7 @@
   const PASSWORD = 'Britte'; // not secret: anyone can read it in this file
   const CHANGES_KEY = 'bachelor-calendar:changes';
   const LOGIN_KEY = 'bachelor-calendar:logged-in';
-  const ZONE_KEY = 'bachelor-calendar:zone';
+  const ZONE_KEY = 'bachelor-calendar:display-zone';
   const DAY_MS = 86400000;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -596,65 +596,163 @@
     'Romance Standard Time': 'Europe/Copenhagen',
     'W. Europe Standard Time': 'Europe/Berlin'
   };
+  const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
   function validZone(tz) {
     try { new Intl.DateTimeFormat('en', { timeZone: tz }); return true; } catch (e) { return false; }
   }
 
-  // Splits an .ics file into VEVENTs: { NAME: {value, params}, EXDATE: [..] }.
+  // ---- Time zones while importing --------------------------------------------
+  // A zone is { offset(ms) }: minutes ahead of UTC at timestamp `ms`.
+  // A "naive" time is a wall-clock time stored as if it were a UTC timestamp.
+  const UTC_ZONE = { offset: () => 0 };
+  const ianaZones = {};
+  function ianaZone(name) {
+    return ianaZones[name] || (ianaZones[name] = {
+      offset: ms => {
+        const w = wallClock(ms, name);
+        return (toUTC(w.date) + w.min * 60000 - Math.floor(ms / 60000) * 60000) / 60000;
+      }
+    });
+  }
+  // Wall-clock time in `zone` -> timestamp, and back. Both follow daylight saving time.
+  const wallToMs = (naive, zone) => naive - zone.offset(naive - zone.offset(naive) * 60000) * 60000;
+  const msToWall = (ms, zone) => ms + zone.offset(ms) * 60000;
+
+  // '20261109T080000', '20261109T080000Z' or '20261109' -> { naive, utc, allDay }
+  function icsValue(v) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z?))?$/.exec(v.trim());
+    if (!m) return null;
+    return {
+      naive: Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)),
+      utc: !!m[7],
+      allDay: !m[4]
+    };
+  }
+
+  function parseRule(rule) {
+    const r = {};
+    rule.split(';').forEach(part => {
+      const [k, v] = part.split('=');
+      if (k) r[k.trim().toUpperCase()] = (v || '').trim().toUpperCase();
+    });
+    return r;
+  }
+
+  const parseOffset = v => {
+    const m = /^([+-])(\d{2})(\d{2})(\d{2})?$/.exec((v || '').trim());
+    return m ? (m[1] === '-' ? -1 : 1) * (+m[2] * 60 + +m[3]) : null;
+  };
+
+  // Start times (naive) of a yearly VTIMEZONE rule such as FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU,
+  // not counting the first one (DTSTART). Stops at UNTIL/COUNT or the year 2100.
+  function yearlyOnsets(rule, startNaive, fromOffset) {
+    const r = parseRule(rule);
+    if (r.FREQ !== 'YEARLY') return [];
+    const first = new Date(startNaive);
+    const time = startNaive - Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate());
+    const months = (r.BYMONTH ? r.BYMONTH.split(',').map(Number) : [first.getUTCMonth() + 1]).sort((a, b) => a - b);
+    const monthDays = r.BYMONTHDAY ? r.BYMONTHDAY.split(',').map(Number) : null;
+    const until = r.UNTIL ? icsValue(r.UNTIL) : null;
+    const count = +r.COUNT || Infinity;
+    const out = [];
+    for (let y = Math.max(first.getUTCFullYear(), 1900); y <= 2100; y++) {
+      for (const m of months) {
+        const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
+        let days = [];
+        for (let d = 1; d <= length; d++) days.push(d);
+        if (monthDays) days = days.filter(d => monthDays.includes(d) || monthDays.includes(d - length - 1));
+        if (r.BYDAY) {
+          const picked = [];
+          r.BYDAY.split(',').forEach(code => {
+            const n = parseInt(code, 10) || 0; // '-1SU' -> -1 (last), '2SU' -> 2 (second), 'SU' -> every
+            const wd = WEEKDAY_CODES.indexOf(code.slice(-2));
+            const matching = days.filter(d => weekday(fromUTC(Date.UTC(y, m - 1, d))) === wd);
+            if (!n) picked.push(...matching);
+            else if (matching[n > 0 ? n - 1 : matching.length + n]) picked.push(matching[n > 0 ? n - 1 : matching.length + n]);
+          });
+          days = picked;
+        } else if (!monthDays) {
+          days = [first.getUTCDate()];
+        }
+        for (const d of [...new Set(days)].sort((a, b) => a - b)) {
+          const naive = Date.UTC(y, m - 1, d) + time;
+          if (naive <= startNaive) continue;
+          if (until && (until.utc ? naive - fromOffset * 60000 : naive) > until.naive) return out;
+          out.push(naive);
+          if (out.length >= count - 1) return out; // COUNT includes DTSTART
+        }
+      }
+    }
+    return out;
+  }
+
+  // A zone defined in the file by a VTIMEZONE block (its STANDARD and DAYLIGHT rules).
+  function vtimezoneZone(comp) {
+    const changes = []; // { at: timestamp, to: offset }
+    let earliest = null;
+    comp.children.filter(c => c.name === 'STANDARD' || c.name === 'DAYLIGHT').forEach(c => {
+      const prop = name => (c.props[name] ? c.props[name][0].value : '');
+      const start = icsValue(prop('DTSTART'));
+      const from = parseOffset(prop('TZOFFSETFROM'));
+      const to = parseOffset(prop('TZOFFSETTO'));
+      if (!start || from === null || to === null) return;
+      if (!earliest || start.naive < earliest.naive) earliest = { naive: start.naive, from };
+      const add = naive => changes.push({ at: naive - from * 60000, to });
+      add(start.naive);
+      (c.props.RDATE || []).forEach(p => p.value.split(',').map(icsValue).forEach(d => d && add(d.naive)));
+      if (c.props.RRULE) yearlyOnsets(prop('RRULE'), start.naive, from).forEach(add);
+    });
+    if (!earliest) return null;
+    changes.sort((a, b) => a.at - b.at);
+    return {
+      offset: ms => {
+        let offset = earliest.from;
+        for (const change of changes) {
+          if (change.at > ms) break;
+          offset = change.to;
+        }
+        return offset;
+      }
+    };
+  }
+
+  // Parses an .ics file into nested components: { name, props: { NAME: [{ value, params }] }, children }.
   function parseICS(text) {
     const lines = text.replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n');
-    const events = [];
-    let cur = null, depth = 0;
+    const root = { name: '', props: {}, children: [] };
+    const stack = [root];
     for (const raw of lines) {
       const line = raw.trimEnd();
-      if (line === 'BEGIN:VEVENT') { cur = { EXDATE: [] }; depth = 0; continue; }
-      if (!cur) continue;
-      if (line === 'END:VEVENT') { events.push(cur); cur = null; continue; }
-      if (line.startsWith('BEGIN:')) { depth++; continue; } // e.g. VALARM inside an event
-      if (line.startsWith('END:')) { depth--; continue; }
-      if (depth) continue;
       let i = 0, quoted = false;
       for (; i < line.length; i++) {
         if (line[i] === '"') quoted = !quoted;
         else if (line[i] === ':' && !quoted) break;
       }
       if (i >= line.length) continue;
-      const [name, ...rest] = line.slice(0, i).split(';');
-      const params = {};
-      rest.forEach(p => {
-        const j = p.indexOf('=');
-        if (j > 0) params[p.slice(0, j).toUpperCase()] = p.slice(j + 1).replace(/^"|"$/g, '');
-      });
-      const prop = { value: line.slice(i + 1), params };
-      if (name.toUpperCase() === 'EXDATE') {
-        prop.value.split(',').forEach(v => cur.EXDATE.push({ value: v, params }));
+      const [rawName, ...rest] = line.slice(0, i).split(';');
+      const name = rawName.toUpperCase();
+      const value = line.slice(i + 1);
+      const top = stack[stack.length - 1];
+      if (name === 'BEGIN') {
+        const comp = { name: value.trim().toUpperCase(), props: {}, children: [] };
+        top.children.push(comp);
+        stack.push(comp);
+      } else if (name === 'END') {
+        if (stack.length > 1) stack.pop();
       } else {
-        cur[name.toUpperCase()] = prop;
+        const params = {};
+        rest.forEach(p => {
+          const j = p.indexOf('=');
+          if (j > 0) params[p.slice(0, j).toUpperCase()] = p.slice(j + 1).replace(/^"|"$/g, '');
+        });
+        (top.props[name] = top.props[name] || []).push({ value, params });
       }
     }
-    return events;
+    return root;
   }
 
   const unescapeText = v => v.replace(/\\([\\;,nN])/g, (_, c) => (c === 'n' || c === 'N' ? ' ' : c)).trim();
-
-  // Reads an .ics date or date-time. `naive` is the wall-clock time as if it were UTC.
-  function icsTime(prop) {
-    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z?))?$/.exec(prop.value.trim());
-    if (!m) return null;
-    let tz = m[7] ? 'UTC' : (prop.params.TZID || '');
-    tz = WINDOWS_TZ[tz] || tz;
-    if (tz && !validZone(tz)) tz = tz.split('/').slice(-2).join('/'); // e.g. /mozilla.org/.../Europe/Oslo
-    if (tz && !validZone(tz)) tz = ''; // unknown zone: assume Faroe time
-    return {
-      naive: Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)),
-      allDay: !m[4],
-      tz
-    };
-  }
-
-  // Real timestamp of wall-clock time `naive` in the zone of `t` (all-day dates stay as they are).
-  const instant = (t, naive = t.naive) => (t.allDay ? naive : zonedToMs(naive, t.tz || TZ));
 
   function icsDuration(v) {
     const m = /^[+]?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v.trim());
@@ -663,32 +761,25 @@
     return ((((w * 7 + d) * 24 + h) * 60 + min) * 60 + s) * 1000;
   }
 
-  // Start times (wall clock, as if UTC) of a repeating event. Supports DAILY and WEEKLY
-  // rules, from one year ago to one year ahead. Returns null for other rules.
+  // Start timestamps of a repeating event, repeated in wall-clock time of `start.zone`
+  // (so daylight saving time doesn't move it). Supports DAILY and WEEKLY rules,
+  // up to one year ahead. Returns null for other rules.
   function expandRule(rule, start) {
-    const r = {};
-    rule.split(';').forEach(part => {
-      const [k, v] = part.split('=');
-      r[k.toUpperCase()] = (v || '').toUpperCase();
-    });
+    const r = parseRule(rule);
     if (r.FREQ !== 'WEEKLY' && r.FREQ !== 'DAILY') return null;
     const interval = +r.INTERVAL || 1;
     const count = +r.COUNT || Infinity;
-    const today = toUTC(nowFaroe().date);
-    const from = today - 366 * DAY_MS, to = today + 366 * DAY_MS;
-    const u = r.UNTIL ? icsTime({ value: r.UNTIL, params: {} }) : null;
-    const untilLimit = !u ? Infinity
-      : u.allDay || start.allDay ? null
-      : u.tz ? instant(u) : instant(start, u.naive);
-    const beforeUntil = naive => !u || (untilLimit === null
+    const to = toUTC(nowFaroe().date) + 366 * DAY_MS;
+    const toMs = naive => (start.allDay ? naive : wallToMs(naive, start.zone));
+    const u = r.UNTIL ? icsValue(r.UNTIL) : null;
+    const beforeUntil = naive => !u || (u.allDay || start.allDay
       ? naive < u.naive - (u.naive % DAY_MS) + DAY_MS
-      : instant(start, naive) <= untilLimit);
-    const codes = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+      : toMs(naive) <= (u.utc ? u.naive : toMs(u.naive)));
     const startDate = fromUTC(start.naive);
     const timeOfDay = start.naive - toUTC(startDate);
-    const byDay = r.BYDAY ? r.BYDAY.split(',').map(d => codes.indexOf(d.slice(-2))) : null;
+    const byDay = r.BYDAY ? r.BYDAY.split(',').map(d => WEEKDAY_CODES.indexOf(d.slice(-2))) : null;
     const out = [];
-    for (let date = startDate, n = 0; n < count; date = addDays(date, 1)) {
+    for (let date = startDate, n = 0; n < count && out.length < 3000; date = addDays(date, 1)) {
       const naive = toUTC(date) + timeOfDay;
       if (naive > to || !beforeUntil(naive)) break;
       const match = r.FREQ === 'DAILY'
@@ -697,12 +788,13 @@
           Math.floor(daysBetween(mondayOf(startDate), date) / 7) % interval === 0;
       if (!match) continue;
       n++;
-      if (naive >= from) out.push(naive);
+      out.push(toMs(naive));
     }
     return out;
   }
 
-  // Turns one occurrence into calendar events (one per day it touches), in Faroe time.
+  // Turns one occurrence (timestamp `ms`, `length` ms long) into calendar events in
+  // Faroe time, one per day it touches. This is the only conversion to Faroe time.
   function addOccurrence(list, base, allDay, ms, length) {
     const add = extra => list.push({ id: newId(), type: 'fixed', source: 'ics', ...base, ...extra });
     if (allDay) {
@@ -722,52 +814,98 @@
   }
 
   function importICS(text) {
-    const vevents = parseICS(text);
-    const events = [];
+    const root = parseICS(text);
+    const calendars = root.children.filter(c => c.name === 'VCALENDAR');
+    const result = { events: [], unsupported: 0, broken: 0 };
+    (calendars.length ? calendars : [root]).forEach(cal => importCalendar(cal, result));
     const notes = [];
-    let unsupported = 0, broken = 0;
+    if (result.unsupported) notes.push(`${result.unsupported} event(s) repeat monthly/yearly: only their first date was imported.`);
+    if (result.broken) notes.push(`${result.broken} event(s) had dates that could not be read and were skipped.`);
+    return { events: result.events, notes };
+  }
 
-    // Single occurrences that were moved/cancelled (RECURRENCE-ID) replace that occurrence of the series
+  function importCalendar(cal, result) {
+    // Time zones defined in the file (VTIMEZONE) come first, then known zone names.
+    const defined = {};
+    cal.children.filter(c => c.name === 'VTIMEZONE').forEach(c => {
+      const id = c.props.TZID && c.props.TZID[0].value.trim();
+      const zone = id && vtimezoneZone(c);
+      if (zone) defined[id] = zone;
+    });
+    const resolve = tzid => {
+      if (!tzid) return null;
+      if (defined[tzid]) return defined[tzid];
+      const name = WINDOWS_TZ[tzid] || tzid;
+      if (validZone(name)) return ianaZone(name);
+      const tail = name.split('/').slice(-2).join('/'); // e.g. /mozilla.org/.../Europe/Oslo
+      return validZone(tail) ? ianaZone(tail) : null;
+    };
+    // The calendar's own time zone (X-WR-TIMEZONE). Used for floating times, and for
+    // repeating events whose start is written in UTC: Apple Calendar keeps those at the
+    // same local clock time all year, so they are repeated in this zone, not in UTC.
+    const named = cal.props['X-WR-TIMEZONE'] && resolve(cal.props['X-WR-TIMEZONE'][0].value.trim());
+    const calZone = named || ianaZone(TZ);
+
+    // A date or date-time: { naive, allDay, zone }. Floating times use `fallback` or the calendar zone.
+    const read = (prop, fallback) => {
+      const v = prop && icsValue(prop.value);
+      if (!v) return null;
+      const zone = v.allDay ? null
+        : v.utc ? UTC_ZONE
+        : (prop.params.TZID && resolve(prop.params.TZID)) || fallback || calZone;
+      return { naive: v.naive, allDay: v.allDay, zone };
+    };
+    const instant = t => (t.allDay ? t.naive : wallToMs(t.naive, t.zone));
+    const get = (v, name) => v.props[name] && v.props[name][0];
+
+    const vevents = cal.children.filter(c => c.name === 'VEVENT');
+
+    // Moved or edited single occurrences (RECURRENCE-ID) replace that occurrence of their series
     const overridden = {};
     vevents.forEach(v => {
-      const t = v['RECURRENCE-ID'] && v.UID && icsTime(v['RECURRENCE-ID']);
-      if (t) (overridden[v.UID.value] = overridden[v.UID.value] || []).push(instant(t));
+      const uid = get(v, 'UID');
+      const t = uid && read(get(v, 'RECURRENCE-ID'));
+      if (t) (overridden[uid.value] = overridden[uid.value] || []).push(instant(t));
     });
 
     vevents.forEach(v => {
-      const status = v.STATUS ? v.STATUS.value.toUpperCase() : '';
-      if (!v.DTSTART || status === 'CANCELLED') return;
-      const start = icsTime(v.DTSTART);
-      if (!start) { broken++; return; }
-      const end = v.DTEND && icsTime(v.DTEND);
+      const status = get(v, 'STATUS') ? get(v, 'STATUS').value.toUpperCase() : '';
+      if (!get(v, 'DTSTART') || status === 'CANCELLED') return;
+      let start = read(get(v, 'DTSTART'));
+      if (!start) { result.broken++; return; }
+      const end = read(get(v, 'DTEND'));
       const length = end ? instant(end) - instant(start)
-        : v.DURATION ? icsDuration(v.DURATION.value)
+        : get(v, 'DURATION') ? icsDuration(get(v, 'DURATION').value)
         : start.allDay ? DAY_MS : 0;
 
-      const base = { title: unescapeText(v.SUMMARY ? v.SUMMARY.value : '') || '(No title)' };
-      const location = v.LOCATION ? unescapeText(v.LOCATION.value) : '';
+      const base = { title: unescapeText(get(v, 'SUMMARY') ? get(v, 'SUMMARY').value : '') || '(No title)' };
+      const location = get(v, 'LOCATION') ? unescapeText(get(v, 'LOCATION').value) : '';
       if (location) base.location = location;
 
-      const exclude = new Set(v.EXDATE.map(icsTime).filter(Boolean).map(t => instant(t)));
-      if (!v['RECURRENCE-ID'] && v.UID && overridden[v.UID.value]) {
-        overridden[v.UID.value].forEach(ms => exclude.add(ms));
+      let starts = [instant(start)];
+      if (get(v, 'RRULE') && !get(v, 'RECURRENCE-ID')) {
+        if (!start.allDay && start.zone === UTC_ZONE && named) {
+          start = { naive: msToWall(instant(start), named), allDay: false, zone: named };
+        }
+        const expanded = expandRule(get(v, 'RRULE').value, start);
+        if (expanded) starts = expanded;
+        else result.unsupported++;
       }
 
-      let starts = [start.naive];
-      if (v.RRULE && !v['RECURRENCE-ID']) {
-        const expanded = expandRule(v.RRULE.value, start);
-        if (expanded) starts = expanded;
-        else unsupported++;
+      const exclude = new Set();
+      (v.props.EXDATE || []).forEach(p => p.value.split(',').forEach(x => {
+        const t = read({ value: x, params: p.params }, start.zone);
+        if (t) exclude.add(instant(t));
+      }));
+      const uid = get(v, 'UID');
+      if (!get(v, 'RECURRENCE-ID') && uid && overridden[uid.value]) {
+        overridden[uid.value].forEach(ms => exclude.add(ms));
       }
-      starts.forEach(naive => {
-        const ms = instant(start, naive);
-        if (!exclude.has(ms)) addOccurrence(events, base, start.allDay, ms, length);
+
+      starts.forEach(ms => {
+        if (!exclude.has(ms)) addOccurrence(result.events, base, start.allDay, ms, length);
       });
     });
-
-    if (unsupported) notes.push(`${unsupported} event(s) repeat monthly/yearly: only their first date was imported.`);
-    if (broken) notes.push(`${broken} event(s) had dates that could not be read and were skipped.`);
-    return { events, notes };
   }
 
   // ---- Start ----------------------------------------------------------------

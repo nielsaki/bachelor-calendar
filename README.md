@@ -29,8 +29,8 @@ them in that file (see below).
 
 - **Viewing:** anyone can open the website and browse weeks with **‹ ›** and **Today**.
   It opens on the current week.
-- **Time zone:** times are shown in **Danish time** by default. Use the menu at the top to switch
-  to **Faroese time**. The choice is remembered in that browser.
+- **Time zone:** times are shown in **Faroese time** (`Atlantic/Faroe`) by default. Use the menu
+  at the top to switch to **Danish time**. The choice is remembered in that browser.
 - **Visitors (not logged in)** only see when you are busy, not what you are doing. Overlapping
   events are merged into one block (for example 08:00–08:45 and 08:30–10:00 become one block
   08:00–10:00). Grey blocks say "Busy" and blue blocks say "Bachelor work". Note that this only
@@ -61,9 +61,20 @@ When logged in you can:
 
 ### About the .ics import
 
-- Times are converted to Faroe time.
-- Repeating events (daily and weekly) are imported from one year ago to one year ahead, with
-  their exceptions. Monthly or yearly repeating events only get their first date.
+- Each event is converted to Faroe time once, when it is imported, and saved like that. The
+  calendar never converts it again (except when you choose to show Danish time).
+- Time zones are read from, in this order: a `VTIMEZONE` definition in the file, a known time zone
+  name in `TZID` (also common Outlook names), UTC times (ending in `Z`). Times without a time zone
+  ("floating") use the calendar's `X-WR-TIMEZONE`, otherwise Faroe time.
+- Repeating events keep the same local clock time all year, so daylight saving time doesn't move
+  them. If a repeating event's start is written in UTC (as in Apple Calendar exports) and the file
+  has an `X-WR-TIMEZONE`, it is repeated in that time zone, like Apple Calendar does.
+- Daily and weekly repeating events are imported from their first date up to one year ahead, with
+  their exceptions and moved occurrences. Monthly or yearly repeating events only get their first
+  date.
+- The importer can only be as correct as the file. Example: in the Apple Calendar export one event
+  ("Joker: Folie à Deux", 2 Oct 2024) was written as 18:30 UTC although Apple Calendar shows it at
+  18:30 Faroe time. It was corrected by hand in `events.js`.
 - To remove all imported events at once, import a new timetable and choose **Replace them**.
 
 ## Event format (`events.js`)
