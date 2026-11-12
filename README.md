@@ -6,23 +6,20 @@ A simple weekly calendar for planning bachelor work sessions.
 
 Plain HTML, CSS and JavaScript. No database, no backend and no build step.
 
-## ⚠️ Important: changes are saved in one browser only
+## ⚠️ Important: changes on the website are not saved
 
-There is no database. Everything you add, move, edit, delete or import on the website is saved
-in **that browser's localStorage only**:
+There is no database, and no events are saved in the browser. Everything you add, move, edit, delete
+or import on the website **disappears when you reload or close the page**. The website then shows
+the events in [`events.js`](events.js) again, which is what everyone sees.
 
-- Changes made on one computer or phone **do not appear on other devices**.
-- Other people **do not see your changes**.
-- Clearing the browser data (or using a private window) **removes your changes**.
+To keep your changes, and to share them with everyone, put them in that file before you reload
+(see below).
 
-Everyone sees the events in [`events.js`](events.js). To share your changes with everyone, put
-them in that file (see below).
-
-### Sharing changes with everyone
+### Keeping and sharing changes
 
 1. Log in on the website and make your changes (import your timetable, add sessions, …).
 2. Click **Export**. This downloads an `events.js` file containing every event you can see.
-3. Replace `events.js` in this repository with the downloaded file.
+3. Replace `events.js` in this repository with the downloaded file. Do this before reloading the page.
 4. Commit and push. GitHub Pages updates the website within a minute or two.
 
 ## Using the calendar

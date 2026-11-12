@@ -12,7 +12,6 @@
   const SNAP = 15;           // minutes; dragged events snap to this
   const USERNAME = 'NielsRo';
   const PASSWORD = 'Britte'; // not secret: anyone can read it in this file
-  const CHANGES_KEY = 'bachelor-calendar:changes';
   const LOGIN_KEY = 'bachelor-calendar:logged-in';
   const ZONE_KEY = 'bachelor-calendar:display-zone';
   const DAY_MS = 86400000;
@@ -63,23 +62,14 @@
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   // ---- Storage --------------------------------------------------------------
-  // Everyone sees INITIAL_EVENTS (events.js). Changes made in this browser are kept in
-  // localStorage as { saved: {id: event}, deleted: [id] } and laid on top of them.
+  // Everyone sees INITIAL_EVENTS (events.js). Changes made on the page are kept in memory
+  // only, as { saved: {id: event}, deleted: [id] }, and laid on top of them. Nothing is
+  // saved in the browser: reloading the page shows events.js again. Use Export to keep them.
   const initial = Array.isArray(window.INITIAL_EVENTS) ? window.INITIAL_EVENTS : [];
   const initialIds = new Set(initial.map(ev => ev.id));
-  let changes = { saved: {}, deleted: [] };
-  try {
-    const stored = JSON.parse(localStorage.getItem(CHANGES_KEY));
-    if (stored && stored.saved && stored.deleted) changes = stored;
-  } catch (e) { /* no saved changes */ }
-
-  function saveChanges() {
-    try {
-      localStorage.setItem(CHANGES_KEY, JSON.stringify(changes));
-    } catch (e) {
-      alert('Could not save in this browser: ' + e.message);
-    }
-  }
+  const changes = { saved: {}, deleted: [] };
+  // Earlier versions saved changes in this browser. Remove what they left behind.
+  try { localStorage.removeItem('bachelor-calendar:changes'); } catch (e) { /* nothing to remove */ }
 
   function allEvents() {
     const byId = new Map();
@@ -376,7 +366,6 @@
     Object.assign(f, savedTimes(f.date, toMin(f.start), toMin(f.end)));
     if (!current.ev) putEvent(withFields({ id: newId(), type: 'flexible' }, f));
     else if (!(await applyEdit(current.ev, current.occDate, f))) return;
-    saveChanges();
     dialog.close();
     render();
   });
@@ -395,7 +384,6 @@
       if (!confirm(`Delete "${ev.title}"?`)) return;
       removeEvent(ev.id);
     }
-    saveChanges();
     dialog.close();
     render();
   });
@@ -497,7 +485,7 @@
         title: ev.title, location: ev.location || '', weekly: !!ev.weekly, until: ev.until || '',
         ...savedTimes(d.newDate, d.newStart, d.newStart + end - start)
       };
-      if (await applyEdit(ev, occDate, f)) saveChanges();
+      await applyEdit(ev, occDate, f);
     }
     render();
   });
@@ -583,7 +571,6 @@
       if (choice === 'replace') old.forEach(ev => removeEvent(ev.id));
     }
     result.events.forEach(putEvent);
-    saveChanges();
     render();
     alert(`Imported ${result.events.length} events as fixed (grey) events.` +
       (result.notes.length ? '\n\n' + result.notes.join('\n') : ''));
