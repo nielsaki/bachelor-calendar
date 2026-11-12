@@ -26,8 +26,8 @@ To keep your changes, and to share them with everyone, put them in that file bef
 
 - **Viewing:** anyone can open the website and browse weeks with **‹ ›** and **Today**.
   It opens on the current week.
-- **Time zone:** times are shown in **Faroese time** (`Atlantic/Faroe`) by default. Use the menu
-  at the top to switch to **Danish time**. The choice is remembered in that browser.
+- **Time zone:** times are shown in **Danish time** (`Europe/Copenhagen`) by default. Use the menu
+  at the top to switch to **Faroese time**. The choice is remembered in that browser.
 - **Visitors (not logged in)** only see when you are busy, not what you are doing. Overlapping
   events are merged into one block (for example 08:00–08:45 and 08:30–10:00 become one block
   08:00–10:00). Grey blocks say "Busy" and blue blocks say "Bachelor work". Note that this only

@@ -5,7 +5,7 @@
   // ---- Settings -------------------------------------------------------------
   const TZ = 'Atlantic/Faroe';  // time zone of the times saved in events.js
   const ZONES = { 'Atlantic/Faroe': 'Faroese time', 'Europe/Copenhagen': 'Danish time' };
-  const DEFAULT_ZONE = 'Atlantic/Faroe';    // time zone the calendar is shown in by default
+  const DEFAULT_ZONE = 'Europe/Copenhagen'; // time zone the calendar is shown in by default
   const START_HOUR = 6;
   const END_HOUR = 23;
   const HOUR_PX = 48;        // keep in sync with --hour in style.css
