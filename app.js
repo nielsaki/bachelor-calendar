@@ -3,7 +3,9 @@
   'use strict';
 
   // ---- Settings -------------------------------------------------------------
-  const TZ = 'Atlantic/Faroe';
+  const TZ = 'Atlantic/Faroe';  // time zone of the times saved in events.js
+  const ZONES = { 'Europe/Copenhagen': 'Danish time', 'Atlantic/Faroe': 'Faroese time' };
+  const DEFAULT_ZONE = 'Europe/Copenhagen'; // time zone the calendar is shown in by default
   const START_HOUR = 6;
   const END_HOUR = 23;
   const HOUR_PX = 48;        // keep in sync with --hour in style.css
@@ -12,12 +14,13 @@
   const PASSWORD = 'Britte'; // not secret: anyone can read it in this file
   const CHANGES_KEY = 'bachelor-calendar:changes';
   const LOGIN_KEY = 'bachelor-calendar:logged-in';
+  const ZONE_KEY = 'bachelor-calendar:zone';
   const DAY_MS = 86400000;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   // ---- Date helpers ---------------------------------------------------------
-  // Dates are 'YYYY-MM-DD' strings and times are 'HH:MM' strings, both in Faroe time.
+  // Dates are 'YYYY-MM-DD' strings and times are 'HH:MM' strings.
   // Date maths uses UTC so the visitor's own time zone never matters.
   const pad = n => String(n).padStart(2, '0');
   const toUTC = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
@@ -48,6 +51,12 @@
       return toUTC(w.date) + w.min * 60000 - Math.floor(ms / 60000) * 60000;
     };
     return naive - offset(naive - offset(naive));
+  }
+
+  // Moves a date + minutes from one time zone to another.
+  function convert(date, min, from, to) {
+    if (from === to) return { date, min };
+    return wallClock(zonedToMs(toUTC(date) + min * 60000, from), to);
   }
 
   const nowFaroe = () => wallClock(Date.now(), TZ);
@@ -100,11 +109,19 @@
   // ---- State ----------------------------------------------------------------
   const $ = sel => document.querySelector(sel);
   const calendar = $('#calendar');
-  let weekStart = mondayOf(nowFaroe().date);
   let loggedIn = false;
-  try { loggedIn = localStorage.getItem(LOGIN_KEY) === '1'; } catch (e) { /* not logged in */ }
+  let zone = DEFAULT_ZONE;
+  try {
+    loggedIn = localStorage.getItem(LOGIN_KEY) === '1';
+    if (ZONES[localStorage.getItem(ZONE_KEY)]) zone = localStorage.getItem(ZONE_KEY);
+  } catch (e) { /* defaults */ }
+  let weekStart = mondayOf(wallClock(Date.now(), zone).date);
   let drag = null;           // the event being dragged, if any
   let justDragged = false;   // ignore the click that follows a drag
+
+  // Saved (Faroe) time <-> time in the zone the calendar is shown in.
+  const toShown = (date, min) => convert(date, min, TZ, zone);
+  const toSaved = (date, min) => convert(date, min, zone, TZ);
 
   function el(tag, className, text) {
     const e = document.createElement(tag);
@@ -114,30 +131,49 @@
   }
 
   // ---- Rendering ------------------------------------------------------------
+  // Each shown event is an "item": { ev, occDate (saved date), date (shown date),
+  // start, end (shown minutes), s, e (minutes clipped to the visible hours) }.
   function render() {
     const days = DAYS.map((_, i) => addDays(weekStart, i));
-    const now = nowFaroe();
+    const now = wallClock(Date.now(), zone);
     $('#week-label').textContent = weekLabel(days[0], days[6]);
     document.body.classList.toggle('editing', loggedIn);
 
-    // Find what happens on each day of this week
-    const timed = days.map(() => []);
-    const allDay = days.map(() => []);
+    // Find what happens on each shown day. Saved dates one day either side are checked
+    // too, because changing time zone can move an event across midnight.
+    let timed = days.map(() => []);
+    let allDay = days.map(() => []);
     allEvents().forEach(ev => {
-      days.forEach((date, i) => {
-        if (!occursOn(ev, date)) return;
-        if (ev.allDay) return allDay[i].push(ev);
-        const s = Math.max(toMin(ev.start), START_HOUR * 60);
-        const e = Math.min(toMin(ev.end), END_HOUR * 60);
-        if (e > s) timed[i].push({ ev, s, e });
-      });
+      for (let saved = addDays(days[0], -1); saved <= addDays(days[6], 1); saved = addDays(saved, 1)) {
+        if (!occursOn(ev, saved)) continue;
+        if (ev.allDay) {
+          const i = daysBetween(days[0], saved);
+          if (i >= 0 && i < 7) allDay[i].push({ ev, occDate: saved, date: saved });
+          continue;
+        }
+        const a = toShown(saved, toMin(ev.start));
+        const b = toShown(saved, toMin(ev.end));
+        const i = daysBetween(days[0], a.date);
+        if (i < 0 || i > 6) continue;
+        const start = a.min;
+        const end = b.date === a.date ? b.min : 24 * 60;
+        const s = Math.max(start, START_HOUR * 60);
+        const e = Math.min(end, END_HOUR * 60);
+        if (e > s) timed[i].push({ ev, occDate: saved, date: a.date, start, end, s, e });
+      }
     });
+
+    // Visitors only see when we are busy, not what we are doing
+    if (!loggedIn) {
+      timed = timed.map(busyBlocks);
+      allDay = allDay.map(items => (items.length ? [{ ev: { type: 'fixed', title: 'Busy', allDay: true } }] : []));
+    }
 
     calendar.textContent = '';
 
     // Header: day names and an all-day row
     const head = el('div', 'cal-head');
-    head.appendChild(el('div', 'corner', 'Faroe time'));
+    head.appendChild(el('div', 'corner', ZONES[zone]));
     days.forEach((date, i) => {
       const h = el('div', 'day-head' + (date === now.date ? ' today' : ''));
       h.appendChild(el('span', 'dow', DAYS[i]));
@@ -145,9 +181,9 @@
       head.appendChild(h);
     });
     head.appendChild(el('div', 'corner allday-label', 'All day'));
-    days.forEach((date, i) => {
+    allDay.forEach(items => {
       const cell = el('div', 'allday');
-      allDay[i].forEach(ev => cell.appendChild(eventBlock(ev, date)));
+      items.forEach(item => cell.appendChild(eventBlock(item)));
       head.appendChild(cell);
     });
     calendar.appendChild(head);
@@ -170,13 +206,13 @@
       col.style.height = height;
       layoutDay(timed[i]);
       timed[i].forEach(item => {
-        const b = eventBlock(item.ev, date);
+        const b = eventBlock(item);
         b.style.top = (item.s - START_HOUR * 60) / 60 * HOUR_PX + 'px';
         b.style.height = Math.max((item.e - item.s) / 60 * HOUR_PX, 18) + 'px';
         b.style.left = `${item.col / item.cols * 100}%`;
         b.style.width = `calc(${100 / item.cols}% - 2px)`;
         if (loggedIn && item.ev.type === 'flexible') {
-          b.addEventListener('pointerdown', e => startDrag(e, b, item.ev, date));
+          b.addEventListener('pointerdown', e => startDrag(e, b, item));
         }
         col.appendChild(b);
       });
@@ -188,26 +224,50 @@
       // Logged in: click an empty slot to create a session there
       col.addEventListener('click', e => {
         if (!loggedIn || justDragged || e.target !== col) return;
-        const min = START_HOUR * 60 + Math.floor(e.offsetY / HOUR_PX * 2) * 30;
-        openEvent(null, date, Math.min(min, END_HOUR * 60 - 60));
+        const min = Math.min(START_HOUR * 60 + Math.floor(e.offsetY / HOUR_PX * 2) * 30, END_HOUR * 60 - 60);
+        openEvent({ ev: null, date, start: min, end: min + 60 });
       });
       body.appendChild(col);
     });
     calendar.appendChild(body);
   }
 
-  function eventBlock(ev, date) {
+  function eventBlock(item) {
+    const ev = item.ev;
     const b = el('div', 'event ' + (ev.type === 'flexible' ? 'flexible' : 'fixed'));
-    const time = ev.allDay ? 'All day' : `${ev.start}–${ev.end}`;
+    const time = ev.allDay ? 'All day' : `${toTime(item.start)}–${toTime(item.end)}`;
     b.appendChild(el('div', 'title', ev.title));
     if (!ev.allDay) b.appendChild(el('div', 'time', time + (ev.weekly ? ' · weekly' : '')));
     if (ev.location) b.appendChild(el('div', 'location', ev.location));
     b.title = [ev.title, time, ev.location].filter(Boolean).join('\n');
-    b.addEventListener('click', e => {
-      e.stopPropagation();
-      if (!justDragged) openEvent(ev, date);
-    });
+    if (loggedIn) {
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!justDragged) openEvent(item);
+      });
+    }
     return b;
+  }
+
+  // For visitors: merges overlapping events into blocks without details,
+  // grey "Busy" for fixed events and blue "Bachelor work" for sessions.
+  function busyBlocks(items) {
+    const blocks = [];
+    [['fixed', 'Busy'], ['flexible', 'Bachelor work']].forEach(([type, title]) => {
+      items
+        .filter(item => (item.ev.type === 'flexible') === (type === 'flexible'))
+        .sort((a, b) => a.start - b.start)
+        .forEach(item => {
+          const last = blocks[blocks.length - 1];
+          if (last && last.ev.type === type && item.start <= last.end) {
+            last.end = Math.max(last.end, item.end);
+            last.e = Math.max(last.e, item.e);
+          } else {
+            blocks.push({ ev: { type, title }, start: item.start, end: item.end, s: item.s, e: item.e });
+          }
+        });
+    });
+    return blocks;
   }
 
   // Overlapping events share the width of the day, side by side.
@@ -242,37 +302,46 @@
     return `${text} · Week ${week}`;
   }
 
-  // ---- Week navigation ------------------------------------------------------
+  // ---- Week navigation and time zone ----------------------------------------
   $('#prev-btn').addEventListener('click', () => { weekStart = addDays(weekStart, -7); render(); });
   $('#next-btn').addEventListener('click', () => { weekStart = addDays(weekStart, 7); render(); });
-  $('#today-btn').addEventListener('click', () => { weekStart = mondayOf(nowFaroe().date); render(); });
+  $('#today-btn').addEventListener('click', () => { weekStart = mondayOf(wallClock(Date.now(), zone).date); render(); });
 
-  // ---- Event dialog ---------------------------------------------------------
+  const zoneSelect = $('#zone-select');
+  zoneSelect.value = zone;
+  zoneSelect.addEventListener('change', () => {
+    zone = zoneSelect.value;
+    try { localStorage.setItem(ZONE_KEY, zone); } catch (e) { /* only for this visit */ }
+    render();
+  });
+
+  // ---- Event dialog (logged in only) ----------------------------------------
   const dialog = $('#event-dialog');
   const form = $('#event-form');
   const fields = form.elements;
-  let current = null; // { ev, date } shown in the dialog; ev is null for a new session
+  let current = null; // the item shown in the dialog; item.ev is null for a new session
 
   const canEdit = ev => loggedIn && (!ev || ev.type === 'flexible');
 
-  function openEvent(ev, date, startMin) {
-    current = { ev, date };
+  function openEvent(item) {
+    const ev = item.ev;
+    current = item;
     const editable = canEdit(ev);
+    const allDay = !!(ev && ev.allDay);
     fields.title.value = ev ? ev.title : 'Bachelor work';
     fields.location.value = (ev && ev.location) || '';
-    fields.date.value = date;
-    fields.start.value = ev ? ev.start || '' : toTime(startMin);
-    fields.end.value = ev ? ev.end || '' : toTime(startMin + 60);
+    fields.date.value = item.date;
+    fields.start.value = allDay ? '' : toTime(item.start);
+    fields.end.value = allDay ? '' : toTime(item.end);
     fields.weekly.checked = !!(ev && ev.weekly);
     fields.until.value = (ev && ev.until) || '';
     form.querySelectorAll('input').forEach(input => { input.disabled = !editable; });
-    $('#event-heading').textContent = !ev ? 'New session'
-      : ev.type !== 'flexible' ? 'Fixed event'
-      : editable ? 'Edit session' : 'Bachelor session';
+    $('#event-heading').textContent = !ev ? 'New session' : editable ? 'Edit session' : 'Fixed event';
     form.classList.toggle('editable', editable);
+    form.classList.toggle('deletable', !!ev && loggedIn);
     form.classList.toggle('is-new', !ev);
     form.classList.toggle('is-fixed', !!ev && ev.type !== 'flexible');
-    form.classList.toggle('all-day', !!(ev && ev.allDay));
+    form.classList.toggle('all-day', allDay);
     form.classList.toggle('weekly', fields.weekly.checked);
     $('#event-error').textContent = '';
     dialog.showModal();
@@ -280,6 +349,13 @@
 
   fields.weekly.addEventListener('change', () => form.classList.toggle('weekly', fields.weekly.checked));
   $('#close-btn').addEventListener('click', () => dialog.close());
+
+  // Converts a shown date + start/end minutes to saved (Faroe) date, start and end.
+  function savedTimes(date, start, end) {
+    const a = toSaved(date, start);
+    const b = toSaved(date, end);
+    return { date: a.date, start: toTime(a.min), end: b.date === a.date ? toTime(b.min) : '24:00' };
+  }
 
   form.addEventListener('submit', async e => {
     e.preventDefault();
@@ -297,24 +373,26 @@
       : f.weekly && f.until && f.until < f.date ? '"Repeat until" must be on or after the date.' : '';
     $('#event-error').textContent = error;
     if (error) return;
+    Object.assign(f, savedTimes(f.date, toMin(f.start), toMin(f.end)));
     if (!current.ev) putEvent(withFields({ id: newId(), type: 'flexible' }, f));
-    else if (!(await applyEdit(current.ev, current.date, f))) return;
+    else if (!(await applyEdit(current.ev, current.occDate, f))) return;
     saveChanges();
     dialog.close();
     render();
   });
 
+  // Logged in: any single event can be deleted, also fixed (grey) ones.
   $('#delete-btn').addEventListener('click', async () => {
-    const { ev, date } = current;
-    if (!ev || !canEdit(ev)) return;
+    const { ev, occDate } = current;
+    if (!ev || !loggedIn) return;
     if (ev.weekly) {
-      const scope = await ask('This session repeats every week. Delete:',
+      const scope = await ask('This event repeats every week. Delete:',
         [['one', 'Only this week'], ['all', 'All weeks']]);
       if (!scope) return;
-      if (scope === 'one') putEvent({ ...ev, skip: [...(ev.skip || []), date] });
+      if (scope === 'one') putEvent({ ...ev, skip: [...(ev.skip || []), occDate] });
       else removeEvent(ev.id);
     } else {
-      if (!confirm('Delete this session?')) return;
+      if (!confirm(`Delete "${ev.title}"?`)) return;
       removeEvent(ev.id);
     }
     saveChanges();
@@ -322,7 +400,7 @@
     render();
   });
 
-  // Copies form values `f` onto event `ev`.
+  // Copies form values `f` (in saved time) onto event `ev`.
   function withFields(ev, f) {
     const out = { ...ev, title: f.title, location: f.location, date: f.date, start: f.start, end: f.end };
     if (f.weekly) {
@@ -338,7 +416,7 @@
     return out;
   }
 
-  // Saves changed values `f` for the occurrence of `ev` on `date`.
+  // Saves changed values `f` (in saved time) for the occurrence of `ev` on saved date `date`.
   // For weekly sessions it asks whether to change only this week or all weeks.
   async function applyEdit(ev, date, f) {
     if (!ev.weekly) {
@@ -379,9 +457,9 @@
   }
 
   // ---- Drag to move (logged in, blue sessions only) -------------------------
-  function startDrag(e, block, ev, date) {
+  function startDrag(e, block, item) {
     if (e.button !== 0) return;
-    drag = { block, ev, date, x: e.clientX, y: e.clientY, moved: false, newDate: date, newStart: toMin(ev.start) };
+    drag = { block, item, x: e.clientX, y: e.clientY, moved: false, newDate: item.date, newStart: item.start };
   }
 
   window.addEventListener('pointermove', e => {
@@ -389,9 +467,9 @@
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 5) return;
     drag.moved = true;
-    const length = toMin(drag.ev.end) - toMin(drag.ev.start);
+    const length = drag.item.end - drag.item.start;
     const latest = Math.max(END_HOUR * 60 - length, START_HOUR * 60);
-    const moved = toMin(drag.ev.start) + Math.round(dy / HOUR_PX * 60 / SNAP) * SNAP;
+    const moved = drag.item.start + Math.round(dy / HOUR_PX * 60 / SNAP) * SNAP;
     const start = Math.min(Math.max(moved, START_HOUR * 60), latest);
     const col = [...calendar.querySelectorAll('.day-col')].find(c => {
       const r = c.getBoundingClientRect();
@@ -413,14 +491,13 @@
     if (!d || !d.moved) return;
     justDragged = true;
     setTimeout(() => { justDragged = false; }, 0);
-    const length = toMin(d.ev.end) - toMin(d.ev.start);
-    if (d.newDate !== d.date || d.newStart !== toMin(d.ev.start)) {
+    const { ev, date, start, end, occDate } = d.item;
+    if (d.newDate !== date || d.newStart !== start) {
       const f = {
-        title: d.ev.title, location: d.ev.location || '', date: d.newDate,
-        start: toTime(d.newStart), end: toTime(d.newStart + length),
-        weekly: !!d.ev.weekly, until: d.ev.until || ''
+        title: ev.title, location: ev.location || '', weekly: !!ev.weekly, until: ev.until || '',
+        ...savedTimes(d.newDate, d.newStart, d.newStart + end - start)
       };
-      if (await applyEdit(d.ev, d.date, f)) saveChanges();
+      if (await applyEdit(ev, occDate, f)) saveChanges();
     }
     render();
   });
@@ -457,9 +534,9 @@
   });
 
   $('#new-btn').addEventListener('click', () => {
-    const today = nowFaroe().date;
+    const today = wallClock(Date.now(), zone).date;
     const inWeek = today >= weekStart && today <= addDays(weekStart, 6);
-    openEvent(null, inWeek ? today : weekStart, 9 * 60);
+    openEvent({ ev: null, date: inWeek ? today : weekStart, start: 9 * 60, end: 10 * 60 });
   });
 
   // ---- Export: download events.js with every event --------------------------

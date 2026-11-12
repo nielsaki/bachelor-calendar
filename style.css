@@ -20,7 +20,7 @@ body {
   background: #fff;
 }
 
-button, .button {
+button, .button, select {
   font: inherit;
   padding: 6px 12px;
   border: 1px solid var(--line);
@@ -131,6 +131,7 @@ body.editing .day-col { cursor: cell; }
 .event .title { font-weight: 600; }
 .event.fixed { background: var(--grey); color: var(--text); border-left: 4px solid var(--grey-dark); }
 .event.flexible { background: var(--blue); color: #fff; }
+body:not(.editing) .event { cursor: default; }
 body.editing .event.flexible { cursor: grab; }
 .event.dragging { z-index: 4; opacity: .85; cursor: grabbing; box-shadow: 0 3px 8px rgba(0, 0, 0, .3); }
 
@@ -179,12 +180,11 @@ label.check { display: flex; align-items: center; gap: 6px; font-size: 14px; col
 #ask-text { margin: 0 0 8px; white-space: pre-line; }
 
 /* What the event dialog shows depends on the event and on being logged in */
-.until, .note-fixed, .login-hint, .all-day-text, #delete-btn, #save-btn { display: none; }
+.until, .note-fixed, .all-day-text, #delete-btn, #save-btn { display: none; }
 #event-form.weekly .until { display: block; }
 #event-form.is-fixed .note-fixed { display: block; }
-#event-form:not(.editable):not(.is-fixed) .login-hint { display: block; }
 #event-form:not(.editable):not(.weekly) .check { display: none; }
 #event-form.all-day .times-row { display: none; }
 #event-form.all-day .all-day-text { display: block; margin: 0 0 10px; }
 #event-form.editable #save-btn { display: inline-block; }
-#event-form.editable:not(.is-new) #delete-btn { display: inline-block; }
+#event-form.deletable #delete-btn { display: inline-block; }
