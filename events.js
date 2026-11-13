@@ -1,6 +1,6 @@
 // Shared events: everyone who opens the website sees these.
 // Times are Faroe time (Atlantic/Faroe). See README.md for the event format.
-// Exported from the website on 2026-11-12.
+// Exported from the website on 2026-11-13.
 window.INITIAL_EVENTS = [
   {"id":"mwctk4nshdd7cv","type":"fixed","source":"ics","title":"Crossfit Børn","date":"2020-02-24","start":"15:00","end":"16:00"},
   {"id":"mwctk4nsp7vdtg","type":"fixed","source":"ics","title":"Crossfit Ung","date":"2020-02-24","start":"16:00","end":"17:00"},
@@ -1098,6 +1098,7 @@ window.INITIAL_EVENTS = [
   {"id":"mwctk4ns8t4fgv","type":"fixed","source":"ics","title":"Støddfrøðiskeið – 7.b","date":"2026-11-16","start":"10:00","end":"12:00"},
   {"id":"mwctk4ns13ebhe","type":"fixed","source":"ics","title":"stø-B - 25K - 776","date":"2026-11-16","start":"12:10","end":"13:40"},
   {"id":"mwctk4nsp389he","type":"fixed","source":"ics","title":"Danskt – 7.a","date":"2026-11-16","start":"12:45","end":"13:30"},
+  {"id":"mweyjgqtkd4bct","type":"fixed","source":"ics","title":"Ró upptikin","date":"2026-11-16","start":"14:00","end":"17:00"},
   {"id":"mwctk4ns6w1vdd","type":"fixed","source":"ics","title":"NWF Fund","location":"Microsoft Teams-möte","date":"2026-11-16","start":"18:00","end":"20:00"},
   {"id":"mwctk4nsnrp4d9","type":"fixed","source":"ics","title":"Støddfrøði – 6.b","date":"2026-11-17","start":"08:00","end":"10:00"},
   {"id":"mwctk4nsbm0756","type":"fixed","source":"ics","title":"Danskt – 7.a","date":"2026-11-17","start":"10:00","end":"11:30"},
@@ -1125,6 +1126,7 @@ window.INITIAL_EVENTS = [
   {"id":"mwctk4nsb06sjb","type":"fixed","source":"ics","title":"Ítrótt 7fl. - Skúlanum í Runavík","date":"2026-11-23","start":"11:50","end":"13:20"},
   {"id":"mwctk4ns23dd3b","type":"fixed","source":"ics","title":"6B - 4116 - STØ","date":"2026-11-23","start":"12:00","end":"13:30"},
   {"id":"mwctk4nszgccbu","type":"fixed","source":"ics","title":"Danskt – 7.a","date":"2026-11-23","start":"12:45","end":"13:30"},
+  {"id":"mweyk6l4gy2seg","type":"fixed","source":"ics","title":"Ró upptikin","date":"2026-11-23","start":"13:30","end":"17:00"},
   {"id":"mwctk4nskl2a6s","type":"fixed","source":"ics","title":"Støddfrøði – 6.b","date":"2026-11-24","start":"08:00","end":"10:00"},
   {"id":"mwctk4nsrj25k3","type":"fixed","source":"ics","title":"Danskt – 7.a","date":"2026-11-24","start":"10:00","end":"11:30"},
   {"id":"mwctk4nssu6gog","type":"fixed","source":"ics","title":"6B - 4116 - STØ - Katrin Gullbein (KGU)","date":"2026-11-24","start":"10:00","end":"11:30"},
